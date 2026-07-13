@@ -1,7 +1,6 @@
 #include "Assistant.h"
 
 #include <algorithm>
-#include <charconv>
 
 #include "MaaUtils/NoWarningCV.hpp"
 #include <meojson/json.hpp>
@@ -31,6 +30,7 @@
 #include "Task/Interface/StartUpTask.h"
 #include "Task/Interface/VideoRecognitionTask.h"
 #include "Utils/Logger.hpp"
+#include "Utils/StringMisc.hpp"
 #ifdef ASST_DEBUG
 #include "Task/Interface/DebugTask.h"
 #endif
@@ -183,8 +183,7 @@ bool asst::Assistant::set_instance_option(InstanceOptionKey key, const std::stri
     case InstanceOptionKey::PageTransitionTimeout:
     case InstanceOptionKey::BattleStartTimeout: {
         int seconds = 0;
-        const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), seconds);
-        if (ec == std::errc {} && ptr == value.data() + value.size()) {
+        if (utils::chars_to_number<int, true>(value, seconds)) {
             const int timeout = std::clamp(seconds, 10, 300);
             if (key == InstanceOptionKey::PageTransitionTimeout) {
                 m_page_transition_timeout_seconds = timeout;
