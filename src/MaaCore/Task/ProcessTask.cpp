@@ -1,11 +1,13 @@
 #include "ProcessTask.h"
 
+#include <algorithm>
 #include <chrono>
 #include <random>
 #include <unordered_set>
 
 #include <meojson/json.hpp>
 
+#include "Assistant.h"
 #include "Config/GeneralConfig.h"
 #include "Config/TaskData.h"
 #include "Controller/Controller.h"
@@ -83,11 +85,14 @@ bool ProcessTask::run()
 
     TaskConstPtr cur_task_ptr = nullptr;           // 当前任务，仅用于计算 on_error_next
     TaskList to_be_recognized = m_begin_task_list; // 待匹配任务列表
+    m_page_transition_pending = false;
     while (true) {
-        auto [status /*识别成功与否*/, next_task_ptr /*匹配到的任务*/] = find_and_run_task(to_be_recognized);
+        auto [status /*识别成功与否*/, next_task_ptr /*匹配到的任务*/] =
+            find_and_run_task(to_be_recognized, retry_policy());
         switch (status) {
         case NodeStatus::RetryFailed:
             // retry 次数达到上限，下一个匹配列表是 on_error_next，若没有则回调 SubTaskError
+            m_page_transition_pending = false;
             if (cur_task_ptr == nullptr || cur_task_ptr->on_error_next.empty()) {
                 callback(AsstMsg::SubTaskError, basic_info());
                 return false;
@@ -115,6 +120,16 @@ bool ProcessTask::run()
 
         if (to_be_recognized.empty()) { // Finished, skip delay
             return true;
+        }
+
+        if (next_task_ptr != nullptr) {
+            if (next_task_ptr->name.find("QuickSwitch@") != std::string::npos &&
+                next_task_ptr->action == ProcessTaskAction::ClickSelf) {
+                m_page_transition_pending = true;
+            }
+            else if (m_page_transition_pending && !is_loading_task(next_task_ptr->name)) {
+                m_page_transition_pending = false;
+            }
         }
 
         if (!sleep(m_task_delay)) { // Interrupted
@@ -333,7 +348,8 @@ ProcessTask::NodeStatus ProcessTask::run_task(const HitDetail& hits)
 }
 
 // 保证 first 为 Success 或 Runout 时 second 不为 nullptr
-std::pair<ProcessTask::NodeStatus, TaskConstPtr> ProcessTask::find_and_run_task(const TaskList& list)
+std::pair<ProcessTask::NodeStatus, TaskConstPtr>
+    ProcessTask::find_and_run_task(const TaskList& list, RetryPolicy retry_policy)
 {
     if (need_exit()) {
         return { NodeStatus::Interrupted, nullptr };
@@ -345,17 +361,17 @@ std::pair<ProcessTask::NodeStatus, TaskConstPtr> ProcessTask::find_and_run_task(
     }
 
     HitDetail hits;
-    for (int cur_retry = 0; cur_retry <= m_retry_times; ++cur_retry) {
+    for (int cur_retry = 0; cur_retry <= retry_policy.times; ++cur_retry) {
         json::value info = basic_info();
         info["details"] = json::object {
             { "to_be_recognized", json::array(list) },
             { "cur_retry", cur_retry },
-            { "retry_times", m_retry_times },
+            { "retry_times", retry_policy.times },
         };
         info["cur_task"] = m_last_task_name;
         Log.info(info.to_string());
 
-        if (cur_retry != 0 && !sleep(m_task_delay)) {
+        if (cur_retry != 0 && !sleep(retry_policy.delay)) {
             return { NodeStatus::Interrupted, nullptr };
         }
         if (hits = find_first(list); hits.task_ptr != nullptr) {
@@ -377,6 +393,29 @@ std::pair<ProcessTask::NodeStatus, TaskConstPtr> ProcessTask::find_and_run_task(
     }
 
     return { run_task(*m_last_hit_detail), m_last_hit_detail->task_ptr };
+}
+
+ProcessTask::RetryPolicy ProcessTask::retry_policy()
+{
+    if (!m_page_transition_pending) {
+        return { .times = m_retry_times, .delay = m_task_delay };
+    }
+
+    constexpr int TargetRetryCount = 20;
+    constexpr int RetryDelayMin = 500;
+    constexpr int RetryDelayMax = 5000;
+
+    const int timeout_ms = inst()->page_transition_timeout_seconds() * 1000;
+    const int retry_delay =
+        std::clamp((timeout_ms + TargetRetryCount - 1) / TargetRetryCount, RetryDelayMin, RetryDelayMax);
+    const int retry_times = (timeout_ms + retry_delay - 1) / retry_delay;
+    return { .times = retry_times, .delay = retry_delay };
+}
+
+bool ProcessTask::is_loading_task(std::string_view task_name)
+{
+    return task_name.find("LoadingText") != std::string_view::npos ||
+           task_name.find("LoadingIcon") != std::string_view::npos;
 }
 
 ProcessTask::TimesLimitData ProcessTask::calc_time_limit(TaskConstPtr task) const

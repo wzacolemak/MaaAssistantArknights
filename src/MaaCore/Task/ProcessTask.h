@@ -59,13 +59,22 @@ protected:
         TaskConstPtr task_ptr = nullptr;
     };
 
+    struct RetryPolicy
+    {
+        int times = 0;
+        int delay = 0;
+    };
+
     virtual bool _run() override;
     virtual json::value basic_info() const override;
 
     HitDetail find_first(const TaskList& list);
     NodeStatus run_action(const HitDetail& hits) const;
     NodeStatus run_task(const HitDetail& hits);
-    std::pair<NodeStatus, TaskConstPtr> find_and_run_task(const TaskList& list);
+    std::pair<NodeStatus, TaskConstPtr> find_and_run_task(const TaskList& list, RetryPolicy retry_policy);
+
+    RetryPolicy retry_policy();
+    static bool is_loading_task(std::string_view task_name);
 
     TimesLimitData calc_time_limit(TaskConstPtr task) const;
     int calc_post_delay(TaskConstPtr task) const;
@@ -90,6 +99,7 @@ protected:
     std::unordered_map<std::string, int> m_exec_times;
     static constexpr int TaskDelayUnsetted = -1;
     int m_task_delay = TaskDelayUnsetted;
+    bool m_page_transition_pending = false;
     cv::Mat m_reusable;
     std::shared_ptr<HitDetail> m_last_hit_detail = nullptr;
 };

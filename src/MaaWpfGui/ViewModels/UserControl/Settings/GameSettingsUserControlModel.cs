@@ -348,6 +348,36 @@ public class GameSettingsUserControlModel : PropertyChangedBase
 
     // 防止乘以 60000 毫秒时 int 溢出，int.MaxValue / 60000 ≈ 35791
     private const int MaxMinutes = 11451;
+    private const int MinTimeoutSeconds = 10;
+    private const int MaxTimeoutSeconds = 300;
+
+    private int _pageTransitionTimeoutSeconds = ConfigurationHelper.GetValue(ConfigurationKeys.PageTransitionTimeoutSeconds, 10)
+        .Clamp(MinTimeoutSeconds, MaxTimeoutSeconds);
+
+    public int PageTransitionTimeoutSeconds
+    {
+        get => _pageTransitionTimeoutSeconds;
+        set {
+            value = value.Clamp(MinTimeoutSeconds, MaxTimeoutSeconds);
+            SetAndNotify(ref _pageTransitionTimeoutSeconds, value);
+            ConfigurationHelper.SetValue(ConfigurationKeys.PageTransitionTimeoutSeconds, value.ToString());
+            SettingsViewModel.ConnectSettings.UpdateInstanceSettings();
+        }
+    }
+
+    private int _battleStartTimeoutSeconds = ConfigurationHelper.GetValue(ConfigurationKeys.BattleStartTimeoutSeconds, 60)
+        .Clamp(MinTimeoutSeconds, MaxTimeoutSeconds);
+
+    public int BattleStartTimeoutSeconds
+    {
+        get => _battleStartTimeoutSeconds;
+        set {
+            value = value.Clamp(MinTimeoutSeconds, MaxTimeoutSeconds);
+            SetAndNotify(ref _battleStartTimeoutSeconds, value);
+            ConfigurationHelper.SetValue(ConfigurationKeys.BattleStartTimeoutSeconds, value.ToString());
+            SettingsViewModel.ConnectSettings.UpdateInstanceSettings();
+        }
+    }
 
     private int _reminderIntervalMinutes = ConfigurationHelper.GetValue(ConfigurationKeys.ReminderIntervalMinutes, 30).Clamp(1, MaxMinutes);
 
