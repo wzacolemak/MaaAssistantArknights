@@ -1,5 +1,8 @@
 #include "Assistant.h"
 
+#include <algorithm>
+#include <charconv>
+
 #include "MaaUtils/NoWarningCV.hpp"
 #include <meojson/json.hpp>
 #include <ranges>
@@ -177,6 +180,22 @@ bool asst::Assistant::set_instance_option(InstanceOptionKey key, const std::stri
     case InstanceOptionKey::ClientType:
         m_ctrler->set_client_type(value);
         return true;
+    case InstanceOptionKey::PageTransitionTimeout:
+    case InstanceOptionKey::BattleStartTimeout: {
+        int seconds = 0;
+        const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), seconds);
+        if (ec == std::errc {} && ptr == value.data() + value.size()) {
+            const int timeout = std::clamp(seconds, 10, 300);
+            if (key == InstanceOptionKey::PageTransitionTimeout) {
+                m_page_transition_timeout_seconds = timeout;
+            }
+            else {
+                m_battle_start_timeout_seconds = timeout;
+            }
+            return true;
+        }
+        break;
+    }
     default:
         break;
     }

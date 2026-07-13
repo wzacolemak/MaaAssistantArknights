@@ -1219,6 +1219,8 @@ public class ConnectSettingsUserControlModel : PropertyChangedBase
     {
         Instances.AsstProxy.AsstSetInstanceOption(InstanceOptionKey.TouchMode, TouchMode);
         Instances.AsstProxy.AsstSetInstanceOption(InstanceOptionKey.DeploymentWithPause, SettingsViewModel.GameSettings.DeploymentWithPause ? "1" : "0");
+        Instances.AsstProxy.AsstSetInstanceOption(InstanceOptionKey.PageTransitionTimeout, SettingsViewModel.GameSettings.PageTransitionTimeoutSeconds.ToString());
+        Instances.AsstProxy.AsstSetInstanceOption(InstanceOptionKey.BattleStartTimeout, SettingsViewModel.GameSettings.BattleStartTimeoutSeconds.ToString());
         Instances.AsstProxy.AsstSetInstanceOption(InstanceOptionKey.AdbLiteEnabled, AdbLiteEnabled ? "1" : "0");
         Instances.AsstProxy.AsstSetInstanceOption(InstanceOptionKey.KillAdbOnExit, KillAdbOnExit ? "1" : "0");
     }
