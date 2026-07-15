@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <random>
 #include <unordered_set>
 
@@ -16,6 +17,11 @@
 #include "Vision/Miscellaneous/PipelineAnalyzer.h"
 
 using namespace asst;
+
+namespace
+{
+constexpr int DefaultPageTransitionTimeoutSeconds = 10;
+}
 
 ProcessTask::ProcessTask(const AbstractTask& abs, std::vector<std::string> tasks_name) :
     AbstractTask(abs),
@@ -123,8 +129,10 @@ bool ProcessTask::run()
         }
 
         if (next_task_ptr != nullptr) {
-            if (next_task_ptr->name.find("QuickSwitch@") != std::string::npos &&
-                next_task_ptr->action == ProcessTaskAction::ClickSelf) {
+            if (inst()->page_transition_timeout_seconds() <= DefaultPageTransitionTimeoutSeconds) {
+                m_page_transition_pending = false;
+            }
+            else if (starts_page_transition(next_task_ptr)) {
                 m_page_transition_pending = true;
             }
             else if (m_page_transition_pending && !is_loading_task(next_task_ptr->name)) {
@@ -397,19 +405,42 @@ std::pair<ProcessTask::NodeStatus, TaskConstPtr>
 
 ProcessTask::RetryPolicy ProcessTask::retry_policy()
 {
+    const RetryPolicy normal_policy { .times = m_retry_times, .delay = m_task_delay };
     if (!m_page_transition_pending) {
-        return { .times = m_retry_times, .delay = m_task_delay };
+        return normal_policy;
     }
 
     constexpr int TargetRetryCount = 20;
     constexpr int RetryDelayMin = 500;
     constexpr int RetryDelayMax = 5000;
 
-    const int timeout_ms = inst()->page_transition_timeout_seconds() * 1000;
+    const int timeout_seconds = inst()->page_transition_timeout_seconds();
+    const int timeout_ms = timeout_seconds * 1000;
+    const std::int64_t normal_timeout_ms = static_cast<std::int64_t>(m_retry_times) * m_task_delay;
+    if (timeout_seconds <= DefaultPageTransitionTimeoutSeconds || timeout_ms <= normal_timeout_ms) {
+        return normal_policy;
+    }
+
     const int retry_delay =
         std::clamp((timeout_ms + TargetRetryCount - 1) / TargetRetryCount, RetryDelayMin, RetryDelayMax);
     const int retry_times = (timeout_ms + retry_delay - 1) / retry_delay;
     return { .times = retry_times, .delay = retry_delay };
+}
+
+bool ProcessTask::starts_page_transition(const TaskConstPtr& task)
+{
+    if (task->name.find("QuickSwitch@") != std::string::npos && task->action == ProcessTaskAction::ClickSelf) {
+        return true;
+    }
+
+    if (std::ranges::any_of(task->sub, [](std::string_view name) { return name.ends_with("-Entry"); })) {
+        return true;
+    }
+
+    const bool may_trigger_loading =
+        task->action == ProcessTaskAction::ClickSelf || task->action == ProcessTaskAction::ClickRect;
+    return may_trigger_loading &&
+           std::ranges::any_of(task->next, [](std::string_view name) { return is_loading_task(name); });
 }
 
 bool ProcessTask::is_loading_task(std::string_view task_name)

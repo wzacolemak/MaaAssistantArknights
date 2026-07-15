@@ -74,6 +74,7 @@ protected:
     std::pair<NodeStatus, TaskConstPtr> find_and_run_task(const TaskList& list, RetryPolicy retry_policy);
 
     RetryPolicy retry_policy();
+    static bool starts_page_transition(const TaskConstPtr& task);
     static bool is_loading_task(std::string_view task_name);
 
     TimesLimitData calc_time_limit(TaskConstPtr task) const;
